@@ -252,21 +252,45 @@ pub struct OsIpcOneShotServer {
 
 impl OsIpcOneShotServer {
     pub fn new() -> Result<(OsIpcOneShotServer, String), ChannelError> {
-        let (sender, receiver) = channel()?;
+        loop {
+            let name = Uuid::new_v4().to_string();
+            match OsIpcOneShotServer::new_with_name(name.clone()) {
+                Some(Ok(server)) => return Ok((server, name)),
+                Some(Err(err)) => return Err(err),
+                None => (),
+            }
+        }
+    }
 
-        let name = Uuid::new_v4().to_string();
+    // Creates a new one shot server with the given name. If the name is already in use, returns
+    // None. Otherwise, returns Some wrapping a Result which is either the one shot server or an
+    // error that was encountered in trying to create the server.
+    // TODO: Is there a better way to represent the None case? Adding this case to ChannelError
+    // would force callers of all functions returning ChannelError to cope with this case even
+    // though it only applies to new_with_name.
+    pub fn new_with_name(name: String) -> Option<Result<OsIpcOneShotServer, ChannelError>> {
+        let chan = channel();
+        if chan.is_err() {
+            return Some(Err(chan.err().unwrap()));
+        }
+        let (sender, receiver) = chan.unwrap();
+
         let record = ServerRecord::new(sender);
-        ONE_SHOT_SERVERS
+
+        let mut guard = ONE_SHOT_SERVERS
             .lock()
-            .unwrap()
-            .insert(name.clone(), record);
-        Ok((
-            OsIpcOneShotServer {
-                receiver: receiver,
-                name: name.clone(),
-            },
-            name.clone(),
-        ))
+            .unwrap();
+        if guard.contains_key(&name) {
+            None
+        } else {
+            guard.insert(name.clone(), record);
+            Some(Ok(
+                OsIpcOneShotServer {
+                    receiver: receiver,
+                    name: name.clone(),
+                }
+            ))
+        }
     }
 
     pub fn accept(self) -> Result<(OsIpcReceiver, IpcMessage), ChannelError> {
