@@ -821,6 +821,8 @@ impl OsIpcOneShotServer {
         ))
     }
 
+    // TODO: implement new_with_name
+
     pub fn accept(self) -> Result<(OsIpcReceiver, IpcMessage), MachError> {
         let ipc_message = self.receiver.recv()?;
         Ok((self.receiver.consume(), ipc_message))

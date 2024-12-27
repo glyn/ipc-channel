@@ -720,6 +720,39 @@ fn server_connect_first() {
     assert_eq!(ipc_message, IpcMessage::from_data(data.to_vec()));
 }
 
+#[test]
+fn named_server_accept_first() {
+    let name = "test-one-shot-accept-first";
+    let server = OsIpcOneShotServer::new_with_name(name.to_string()).unwrap().unwrap();
+    let data: &[u8] = b"1234567";
+
+    thread::spawn(move || {
+        thread::sleep(Duration::from_millis(30));
+        let tx = OsIpcSender::connect(name.to_string()).unwrap();
+        tx.send(data, vec![], vec![]).unwrap();
+    });
+
+    let (_, ipc_message) = server.accept().unwrap();
+    assert_eq!(ipc_message, IpcMessage::from_data(data.to_vec()));
+}
+
+#[test]
+fn named_server_connect_first() {
+    let name = "test-one-shot-connect-first";
+    let server = OsIpcOneShotServer::new_with_name(name.to_string()).unwrap().unwrap();
+    let data: &[u8] = b"1234567";
+
+    thread::spawn(move || {
+        let tx = OsIpcSender::connect(name.to_string()).unwrap();
+        tx.send(data, vec![], vec![]).unwrap();
+    });
+
+    thread::sleep(Duration::from_millis(30));
+    let (_, mut ipc_message) = server.accept().unwrap();
+    ipc_message.data.truncate(7);
+    assert_eq!(ipc_message, IpcMessage::from_data(data.to_vec()));
+}
+
 #[cfg(not(any(feature = "force-inprocess", target_os = "android", target_os = "ios")))]
 #[test]
 fn cross_process_spawn() {
