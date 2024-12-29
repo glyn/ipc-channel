@@ -265,6 +265,32 @@ fn cross_process_embedded_senders_fork() {
     assert_eq!(received_person, person);
 }
 
+#[cfg(not(any(
+    feature = "force-inprocess",
+    target_os = "windows",
+    target_os = "android",
+    target_os = "ios"
+)))]
+#[test]
+fn raw_cross_process_embedded_senders_fork() {
+    let person = ("Patrick Walton".to_owned(), 29);
+    let (tx0, rx0): (IpcSender<IpcSender<Person>>, IpcReceiver<IpcSender<Person>>) = ipc::channel().unwrap();
+    let (tx2, rx2): (IpcSender<Person>, IpcReceiver<Person>) = ipc::channel().unwrap();
+    let child_pid = unsafe {
+        fork(|| {
+            let (tx1, rx1): (IpcSender<Person>, IpcReceiver<Person>) = ipc::channel().unwrap();
+            tx0.send(tx1).unwrap(); // this unwrap panics because unwrapping an Err value InvalidName
+            rx1.recv().unwrap();
+            tx2.send(person.clone()).unwrap();
+        })
+    };
+    let tx1 = rx0.recv().unwrap();
+    tx1.send(person.clone()).unwrap();
+    let received_person = rx2.recv().unwrap();
+    child_pid.wait();
+    assert_eq!(received_person, person);
+}
+
 #[test]
 fn router_simple_global() {
     // Note: All ROUTER operation need to run in a single test,
