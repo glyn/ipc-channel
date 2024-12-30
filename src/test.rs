@@ -274,14 +274,16 @@ fn cross_process_embedded_senders_fork() {
 #[test]
 fn raw_cross_process_embedded_senders_fork() {
     let person = ("Patrick Walton".to_owned(), 29);
+    let person_clone = person.clone();
     let (tx0, rx0): (IpcSender<IpcSender<Person>>, IpcReceiver<IpcSender<Person>>) = ipc::channel().unwrap();
     let (tx2, rx2): (IpcSender<Person>, IpcReceiver<Person>) = ipc::channel().unwrap();
     let child_pid = unsafe {
-        fork(|| {
+        fork(move || {
             let (tx1, rx1): (IpcSender<Person>, IpcReceiver<Person>) = ipc::channel().unwrap();
-            tx0.send(tx1).unwrap(); // this unwrap panics because unwrapping an Err value InvalidName
+            tx0.send(tx1).unwrap(); // this unwrap panics because unwrapping an Err value
+                                    // Io(Custom { kind: NotFound, error: SendInvalidDest })
             rx1.recv().unwrap();
-            tx2.send(person.clone()).unwrap();
+            tx2.send(person_clone).unwrap();
         })
     };
     let tx1 = rx0.recv().unwrap();
