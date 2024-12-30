@@ -265,6 +265,34 @@ fn cross_process_embedded_senders_fork() {
     assert_eq!(received_person, person);
 }
 
+#[cfg(not(any(
+    feature = "force-inprocess",
+    target_os = "windows",
+    target_os = "android",
+    target_os = "ios"
+)))]
+#[test]
+fn receiving_many_ipc_channels() {
+
+    let (send1, recv1) = ipc::channel::<IpcSender<bool>>().unwrap();
+    let (send2, recv2) = ipc::channel::<bool>().unwrap();
+    thread::spawn(move || {
+        let mut senders = vec![];
+        while let Ok(send2) = recv1.recv() {
+            let _ = send2.send(true);
+            // The fd is private, but this transmute lets us get at it
+            // let fd: &std::sync::Arc<u32> = unsafe { std::mem::transmute(&send2) };
+            // println!("fd = {}", *fd);
+            // Stop the ipc channel from being dropped
+            senders.push(send2);
+        }
+    });
+    for _ in 0..10000 {
+        let _ = send1.send(send2.clone());
+        let _ = recv2.recv();
+    }
+}
+
 #[test]
 fn router_simple_global() {
     // Note: All ROUTER operation need to run in a single test,
