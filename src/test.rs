@@ -265,6 +265,31 @@ fn cross_process_embedded_senders_fork() {
     assert_eq!(received_person, person);
 }
 
+#[cfg(not(any(
+    feature = "force-inprocess",
+    target_os = "windows",
+    target_os = "android",
+    target_os = "ios"
+)))]
+#[test]
+fn cross_process_send_multiple_requests_to_one_shot_server() {
+    let person = ("Arthur Dent".to_owned(), 29);
+    let person2 = ("Ford Prefect".to_owned(), 54);
+    let (server0, server0_name) = IpcOneShotServer::new().unwrap();
+    let child_pid = unsafe {
+        fork(|| {
+            let tx0 = IpcSender::connect(server0_name).unwrap();
+            tx0.send(person.clone()).unwrap();
+            tx0.send(person2.clone()).unwrap();
+        })
+    };
+    let (rx, received_person): (IpcReceiver<Person>, Person) = server0.accept().unwrap();
+    let received_person2 = rx.recv().unwrap();
+    child_pid.wait();
+    assert_eq!(received_person, person);
+    assert_eq!(received_person2, person2);
+}
+
 #[test]
 fn router_simple_global() {
     // Note: All ROUTER operation need to run in a single test,
