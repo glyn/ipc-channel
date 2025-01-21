@@ -290,6 +290,38 @@ fn cross_process_send_multiple_requests_to_one_shot_server() {
     assert_eq!(received_person2, person2);
 }
 
+#[cfg(not(any(
+    feature = "force-inprocess",
+    target_os = "windows",
+    target_os = "android",
+    target_os = "ios"
+)))]
+#[test]
+fn cross_process_connecting_multiple_times_to_one_shot_server() {
+    let person = ("Arthur Dent".to_owned(), 29);
+    let person2 = ("Ford Prefect".to_owned(), 54);
+    let (server0, server0_name) = IpcOneShotServer::new().unwrap();
+    let child_pid = unsafe {
+        fork(|| {
+            let tx0 = IpcSender::connect(server0_name.clone()).unwrap();
+            tx0.send(person.clone()).unwrap();
+        })
+    };
+    let child_pid2 = unsafe {
+        fork(|| {
+            let tx0 = IpcSender::connect(server0_name.clone()).unwrap();
+            tx0.send(person2.clone()).unwrap();
+        })
+    };
+    // TODO: see if this works on Linux. It passes on macOS.
+    let (rx, received_person): (IpcReceiver<Person>, Person) = server0.accept().unwrap();
+    let received_person2 = rx.recv().unwrap();
+    child_pid.wait();
+    child_pid2.wait();
+    assert_eq!(received_person, person);
+    assert_eq!(received_person2, person2);
+}
+
 #[test]
 fn router_simple_global() {
     // Note: All ROUTER operation need to run in a single test,
