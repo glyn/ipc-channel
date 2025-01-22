@@ -313,9 +313,8 @@ fn cross_process_connecting_multiple_times_to_one_shot_server() {
             tx0.send(person2.clone()).unwrap();
         })
     };
-    // TODO: see if this works on Linux. It passes on macOS.
     let (rx, received_person): (IpcReceiver<Person>, Person) = server0.accept().unwrap();
-    let received_person2 = rx.recv().unwrap();
+    let received_person2 = rx.recv().unwrap(); // This panics with "`Err`` value: Disconnected" on Linux
     child_pid.wait();
     child_pid2.wait();
     assert_eq!(received_person, person);
