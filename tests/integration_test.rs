@@ -43,8 +43,8 @@ fn spawn_multi_shot_server_clients() {
 
     let (rx, msg1) = server.accept().expect("accept failed");
     assert_eq!("test message 1", msg1);
-    
-    let child2 = spawn_client_test_helper(token, "test message 2".to_string());  
+
+    let child2 = spawn_client_test_helper(token, "test message 2".to_string());
     await_child_process(child2);
 
     let msg2 = rx.recv().expect("failed to receive message 2");

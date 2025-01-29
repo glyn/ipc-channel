@@ -13,7 +13,7 @@ use std::{env, process};
 /// Test executable which connects to the one-shot server with name
 /// passed in as an argument and then sends a test message to the
 /// server.
-/// 
+///
 /// Arguments:
 /// * server name
 /// * message
