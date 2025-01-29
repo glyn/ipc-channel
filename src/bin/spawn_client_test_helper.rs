@@ -13,12 +13,17 @@ use std::{env, process};
 /// Test executable which connects to the one-shot server with name
 /// passed in as an argument and then sends a test message to the
 /// server.
+/// 
+/// Arguments:
+/// * server name
+/// * message
 fn main() {
     let args: Vec<String> = env::args().collect();
     let token = args.get(1).expect("missing argument");
+    let message = args.get(2).expect("missing argument");
 
     let tx: IpcSender<String> = IpcSender::connect(token.to_string()).expect("connect failed");
-    tx.send("test message".to_string()).expect("send failed");
+    tx.send(message.to_string()).expect("send failed");
 
     process::exit(0);
 }

@@ -26,7 +26,7 @@ fn spawn_one_shot_server_client() {
         IpcOneShotServer::<String>::new().expect("Failed to create IPC one-shot server.");
 
     let mut command = process::Command::new(executable_path);
-    let child_process = command.arg(token);
+    let child_process = command.arg(token).arg("test message".to_string());
 
     let mut child = child_process
         .spawn()
