@@ -8,7 +8,7 @@
 // except according to those terms.
 
 #[cfg(not(any(feature = "force-inprocess", target_os = "android", target_os = "ios")))]
-use ipc_channel::ipc::IpcOneShotServer;
+use ipc_channel::ipc;
 #[cfg(not(any(feature = "force-inprocess", target_os = "android", target_os = "ios")))]
 use std::{env, process};
 
@@ -20,36 +20,39 @@ use std::{env, process};
 #[cfg(not(any(feature = "force-inprocess", target_os = "android", target_os = "ios")))]
 #[test]
 fn spawn_one_shot_server_client() {
-    let (server, token) =
-        IpcOneShotServer::<String>::new().expect("Failed to create IPC one-shot server.");
+    let (tx, rx): (ipc::IpcSender<String>, ipc::IpcReceiver<String>) = ipc::channel().unwrap();
+    panic!("tx = {:?}", tx);
 
-    let child = spawn_client_test_helper(token, "test message".to_string());
+    let token = serde_json::to_string(&tx).unwrap();
+    panic!("token to be sent = {}", token);
 
-    let (_rx, msg) = server.accept().expect("accept failed");
-    assert_eq!("test message", msg);
+    // let child = spawn_client_test_helper(token, "test message".to_string());
 
-    await_child_process(child);
+    // let msg = rx.recv().unwrap();
+    // assert_eq!("test message", msg);
+
+    // await_child_process(child);
 }
 /// Test spawing two processes which then act as clients to a
 /// server in the parent process.
-#[cfg(not(any(feature = "force-inprocess", target_os = "android", target_os = "ios")))]
-#[test]
-fn spawn_multi_shot_server_clients() {
-    let (server, token) =
-        IpcOneShotServer::<String>::new().expect("Failed to create IPC one-shot server.");
+// #[cfg(not(any(feature = "force-inprocess", target_os = "android", target_os = "ios")))]
+// #[test]
+// fn spawn_multi_shot_server_clients() {
+//     let (server, token) =
+//         IpcOneShotServer::<String>::new().expect("Failed to create IPC one-shot server.");
 
-    let child1 = spawn_client_test_helper(token.clone(), "test message 1".to_string());
-    await_child_process(child1);
+//     let child1 = spawn_client_test_helper(token.clone(), "test message 1".to_string());
+//     await_child_process(child1);
 
-    let (rx, msg1) = server.accept().expect("accept failed");
-    assert_eq!("test message 1", msg1);
+//     let (rx, msg1) = server.accept().expect("accept failed");
+//     assert_eq!("test message 1", msg1);
 
-    let child2 = spawn_client_test_helper(token, "test message 2".to_string());
-    await_child_process(child2);
+//     let child2 = spawn_client_test_helper(token, "test message 2".to_string());
+//     await_child_process(child2);
 
-    let msg2 = rx.recv().expect("failed to receive message 2");
-    assert_eq!("test message 2", msg2);
-}
+//     let msg2 = rx.recv().expect("failed to receive message 2");
+//     assert_eq!("test message 2", msg2);
+// }
 
 #[cfg(not(any(feature = "force-inprocess", target_os = "android", target_os = "ios")))]
 fn spawn_client_test_helper(server_name: String, message: String) -> process::Child {

@@ -20,9 +20,10 @@ use std::{env, process};
 fn main() {
     let args: Vec<String> = env::args().collect();
     let token = args.get(1).expect("missing argument");
+    println!("token: {}", token);
     let message = args.get(2).expect("missing argument");
 
-    let tx: IpcSender<String> = IpcSender::connect(token.to_string()).expect("connect failed");
+    let tx: IpcSender<String> = serde_json::from_str(token).unwrap();
     tx.send(message.to_string()).expect("send failed");
 
     process::exit(0);
