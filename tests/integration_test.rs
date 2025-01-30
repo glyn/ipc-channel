@@ -8,7 +8,7 @@
 // except according to those terms.
 
 #[cfg(not(any(feature = "force-inprocess", target_os = "android", target_os = "ios")))]
-use ipc_channel::ipc::IpcOneShotServer;
+use ipc_channel::ipc::{IpcSender, IpcOneShotServer};
 #[cfg(not(any(feature = "force-inprocess", target_os = "android", target_os = "ios")))]
 use std::{env, process};
 
@@ -23,7 +23,7 @@ fn spawn_one_shot_server_client() {
     let executable_path: String = env!("CARGO_BIN_EXE_spawn_client_test_helper").to_string();
 
     let (server, token) =
-        IpcOneShotServer::<String>::new().expect("Failed to create IPC one-shot server.");
+        IpcOneShotServer::<IpcSender<String>>::new().expect("Failed to create IPC one-shot server.");
 
     let mut command = process::Command::new(executable_path);
     let child_process = command.arg(token);
@@ -32,8 +32,8 @@ fn spawn_one_shot_server_client() {
         .spawn()
         .expect("Failed to start child process");
 
-    let (_rx, msg) = server.accept().expect("accept failed");
-    assert_eq!("test message", msg);
+    let (_rx, tx) = server.accept().expect("accept failed");
+    tx.send("response message".to_string()).expect("send failed");
 
     let result = child.wait().expect("wait for child process failed");
     assert!(

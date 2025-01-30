@@ -7,7 +7,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use ipc_channel::ipc::IpcSender;
+use ipc_channel::ipc;
 use std::{env, process};
 
 /// Test executable which connects to the one-shot server with name
@@ -17,8 +17,11 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     let token = args.get(1).expect("missing argument");
 
-    let tx: IpcSender<String> = IpcSender::connect(token.to_string()).expect("connect failed");
-    tx.send("test message".to_string()).expect("send failed");
+    let tx: ipc::IpcSender<ipc::IpcSender<String>> = ipc::IpcSender::connect(token.to_string()).expect("connect failed");
+    let (sub_tx, sub_rx) = ipc::channel().expect("Failed to create channel");
+    tx.send(sub_tx).expect("send failed");
+    let msg = sub_rx.recv().unwrap();
+    assert_eq!("response message", msg);
 
     process::exit(0);
 }
