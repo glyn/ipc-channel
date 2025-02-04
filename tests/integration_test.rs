@@ -42,3 +42,44 @@ fn spawn_one_shot_server_client() {
         result.code().expect("exit status code not available")
     );
 }
+
+/// Test spawing a process which then acts as a client to a
+/// one-shot server in the parent process. The client sends
+/// one message and terminates, but the server attempts to
+/// receive a second message. This receive should fail
+/// because the client has disconnected.
+#[cfg(not(any(feature = "force-inprocess", target_os = "android", target_os = "ios")))]
+#[test]
+fn spawn_one_shot_server_client_which_exits_prematurely() {
+    let executable_path: String = env!("CARGO_BIN_EXE_spawn_client_test_helper").to_string();
+
+    let (server, token) =
+        IpcOneShotServer::<String>::new().expect("Failed to create IPC one-shot server.");
+
+    let mut command = process::Command::new(executable_path);
+    let child_process = command.arg(token);
+
+    let mut child = child_process
+        .spawn()
+        .expect("Failed to start child process");
+
+    let (rx, msg) = server.accept().expect("accept failed");
+    assert_eq!("test message", msg);
+
+    let result = child.wait().expect("wait for child process failed");
+    assert!(
+        result.success(),
+        "child process failed with exit status code {}",
+        result.code().expect("exit status code not available")
+    );
+
+    // The error message differs on Windows ("Disconnected") and Unix/Linux ("disconnected").
+    assert_eq!(
+        rx.recv()
+            .err()
+            .expect("expected error was not returned")
+            .to_string()
+            .to_lowercase(),
+        "disconnected"
+    );
+}
