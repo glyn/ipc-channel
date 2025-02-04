@@ -42,3 +42,33 @@ fn spawn_one_shot_server_client() {
         result.code().expect("exit status code not available")
     );
 }
+
+/// Reproduce issue 328.
+#[cfg(not(any(feature = "force-inprocess", target_os = "android", target_os = "ios")))]
+#[test]
+fn spawn_one_shot_server_client_328() {
+    use ipc_channel::ipc::IpcReceiver;
+
+    let executable_path: String = env!("CARGO_BIN_EXE_spawn_client_test_helper_328").to_string();
+
+    let (server, token) =
+        IpcOneShotServer::<IpcReceiver<String>>::new().expect("Failed to create IPC one-shot server.");
+
+    let mut command = process::Command::new(executable_path);
+    let child_process = command.arg(token);
+
+    let mut child = child_process
+        .spawn()
+        .expect("Failed to start child process");
+
+    let (_rx, rx) = server.accept().expect("accept failed");
+    let msg = rx.recv().expect("receive failed");
+    assert_eq!("test message", msg);
+
+    let result = child.wait().expect("wait for child process failed");
+    assert!(
+        result.success(),
+        "child process failed with exit status code {}",
+        result.code().expect("exit status code not available")
+    );
+}
