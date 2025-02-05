@@ -738,7 +738,7 @@ fn select(
 
         let local_port = (*message).header.msgh_local_port;
         if (*message).header.msgh_id == MACH_NOTIFY_NO_SENDERS {
-            return Ok(OsIpcSelectionResult::ChannelClosed(local_port as u64));
+            return Ok(OsIpcSelectionResult::ChannelClosed(local_port as u64)); // FIXME: why does this not solve #266?
         }
 
         let (mut ports, mut shared_memory_regions) = (Vec::new(), Vec::new());
