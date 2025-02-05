@@ -75,4 +75,3 @@ fn spawn_one_shot_server_client_which_exits_prematurely() {
 
     let _msg = rx.recv().expect("receive failed");
 }
-
