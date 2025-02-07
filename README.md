@@ -64,9 +64,9 @@ cargo bench
 
 ## Implementation overview
 
-`ipc-channel` is implemented in terms of native IPC primitives: file descriptor passing over Unix sockets on Unix variants, Mach ports on macOS, and named pipes on Windows.
+`ipc-channel` is implemented in terms of native IPC primitives: file descriptor passing over Unix sockets on Unix variants and named pipes on Windows.
 
-One-shot server names are implemented as a file system path (for Unix variants, with the file system path bound to the socket) or other kinds of generated names on macOS and Windows.
+One-shot server names are implemented as a file system path (for Unix variants, with the file system path bound to the socket) or another kind of generated name on Windows.
 
 ## Major missing features
 

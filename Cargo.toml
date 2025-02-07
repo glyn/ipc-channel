@@ -41,7 +41,7 @@ rand = "0.8"
 serde = { version = "1.0", features = ["rc"] }
 uuid = { version = "1", features = ["v4"] }
 
-[target.'cfg(any(target_os = "linux", target_os = "openbsd", target_os = "freebsd", target_os = "illumos"))'.dependencies]
+[target.'cfg(any(target_os = "linux", target_os = "openbsd", target_os = "freebsd", target_os = "macos", target_os = "illumos"))'.dependencies]
 mio = { version = "1.0", features = ["os-ext"] }
 tempfile = "3.4"
 

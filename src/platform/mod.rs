@@ -13,6 +13,7 @@
         target_os = "linux",
         target_os = "openbsd",
         target_os = "freebsd",
+        target_os = "macos",
         target_os = "illumos",
     )
 ))]
@@ -23,18 +24,12 @@ mod unix;
         target_os = "linux",
         target_os = "openbsd",
         target_os = "freebsd",
+        target_os = "macos",
         target_os = "illumos",
     )
 ))]
 mod os {
     pub use super::unix::*;
-}
-
-#[cfg(all(not(feature = "force-inprocess"), target_os = "macos"))]
-mod macos;
-#[cfg(all(not(feature = "force-inprocess"), target_os = "macos"))]
-mod os {
-    pub use super::macos::*;
 }
 
 #[cfg(all(not(feature = "force-inprocess"), target_os = "windows"))]
