@@ -16,7 +16,9 @@ use libc::{
     PROT_WRITE, SOCK_SEQPACKET, SOL_SOCKET,
 };
 use libc::{c_char, c_int, c_void, getsockopt, SO_LINGER, S_IFMT, S_IFSOCK};
-use libc::{iovec, msghdr, off_t, recvmsg, sendmsg};
+#[cfg(not(target_os = "macos"))]
+use libc::off_t;
+use libc::{iovec, msghdr, recvmsg, sendmsg};
 use libc::{sa_family_t, setsockopt, size_t, sockaddr, sockaddr_un, socketpair, socklen_t};
 use libc::{EAGAIN, EWOULDBLOCK};
 use mio::unix::SourceFd;
@@ -41,6 +43,16 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, UNIX_EPOCH};
 use tempfile::{Builder, TempDir};
+
+use std::{
+    fs::OpenOptions,
+    io::{Seek, SeekFrom, Write},
+    os::unix::prelude::AsRawFd,
+};
+
+use std::ffi::{CStr,OsStr};
+use std::path::Path;
+use std::os::unix::ffi::OsStrExt;
 
 const MAX_FDS_IN_CMSG: u32 = 64;
 
@@ -1120,6 +1132,7 @@ fn new_msghdr(iovec: &mut [iovec], cmsg_buffer: *mut cmsghdr, cmsg_space: MsgCon
     msghdr
 }
 
+#[cfg(not(target_os = "macos"))]
 fn create_shmem(name: CString, length: usize) -> c_int {
     unsafe {
         let fd = libc::memfd_create(name.as_ptr(), libc::MFD_CLOEXEC);
@@ -1127,6 +1140,43 @@ fn create_shmem(name: CString, length: usize) -> c_int {
         assert_eq!(libc::ftruncate(fd, length as off_t), 0);
         fd
     }
+}
+
+#[cfg(target_os = "macos")]
+fn create_shmem(name: CString, length: usize) -> c_int {
+    let slice = unsafe {CStr::from_ptr(name.into_raw())};
+    let osstr = OsStr::from_bytes(slice.to_bytes());
+    let path: &Path = osstr.as_ref();
+    
+    let mut f = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .open(path)
+        .expect("failed to open file");
+
+    // Allocate space in the file
+    f.seek(SeekFrom::Start(length as u64)).unwrap();
+    f.write_all(&[0]).unwrap();
+    f.seek(SeekFrom::Start(0)).unwrap();
+
+    // This refers to the `File` but doesn't use lifetimes to indicate
+    // that. This is very dangerous, and you need to be careful.
+    unsafe {
+        let data = libc::mmap(
+            ptr::null_mut(),
+            length,
+            libc::PROT_READ | libc::PROT_WRITE,
+            libc::MAP_SHARED,
+            f.as_raw_fd(),
+            0,
+        );
+
+        if data == libc::MAP_FAILED {
+            panic!("failed to create memory mapping")
+        }
+    }
+    f.as_raw_fd()
 }
 
 struct UnixCmsg {
@@ -1165,7 +1215,11 @@ impl UnixCmsg {
                 }
             },
             BlockingMode::Timeout(duration) => {
-                let events = libc::POLLIN | libc::POLLPRI | libc::POLLRDHUP;
+                #[cfg(not(target_os = "macos"))]
+                let events = libc::POLLIN | libc::POLLPRI| libc::POLLRDHUP;
+                #[cfg(target_os = "macos")]
+                let events = libc::POLLIN | libc::POLLPRI| libc::POLLHUP;
+
 
                 let mut fd = [libc::pollfd {
                     fd,
