@@ -11,6 +11,8 @@ use crate::ipc::{self, IpcMessage};
 use bincode;
 use fnv::FnvHasher;
 use lazy_static::lazy_static;
+#[cfg(target_os = "macos")]
+use libc::SOCK_DGRAM;
 use libc::{
     self, cmsghdr, linger, CMSG_DATA, CMSG_LEN, CMSG_SPACE, MAP_FAILED, MAP_SHARED, PROT_READ,
     PROT_WRITE, SOCK_SEQPACKET, SOL_SOCKET,
@@ -111,9 +113,14 @@ static SHM_COUNT: AtomicUsize = AtomicUsize::new(0);
 pub fn channel() -> Result<(OsIpcSender, OsIpcReceiver), UnixError> {
     let mut results = [0, 0];
     unsafe {
+        // socketpair does not appear to support SOCK_SEQPACKET on macOS
+        #[cfg(not(target_os = "macos"))]
+        let flags = SOCK_SEQPACKET | SOCK_FLAGS;
+        #[cfg(target_os = "macos")]
+        let flags = SOCK_DGRAM | SOCK_FLAGS;
         if socketpair(
             libc::AF_UNIX,
-            SOCK_SEQPACKET | SOCK_FLAGS,
+            flags,
             0,
             &mut results[0],
         ) >= 0
