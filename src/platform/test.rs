@@ -325,7 +325,7 @@ macro_rules! create_big_data_with_n_fds {
             let thread = thread::spawn(move || {
                 let data: Vec<u8> = (0..1024 * 1024).map(|i| (i % 251) as u8).collect();
                 let data: &[u8] = &data[..];
-                super_tx.send(data, sender_fds, vec![]).unwrap();
+                super_tx.send(data, sender_fds, vec![]).unwrap(); // FIXME: panics errno=54 ECONNRESET meaning receiver has closed the connection without receiving all the data
             });
             let ipc_message = super_rx.recv().unwrap();
             thread.join().unwrap();
