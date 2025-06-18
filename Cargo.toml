@@ -42,7 +42,7 @@ libc = "0.2.162"
 log = "0.4.26"
 serde = { version = "1.0", features = ["derive", "rc"] }
 tracing = { version = "0.1.41", features = ["log"] }
-uuid = { version = "1", features = ["v4"] }
+uuid = { version = "1", features = ["v4", "serde"] }
 weak-table = "0.3.2"
 
 [target.'cfg(any(target_os = "linux", target_os = "openbsd", target_os = "freebsd", target_os = "illumos"))'.dependencies]
