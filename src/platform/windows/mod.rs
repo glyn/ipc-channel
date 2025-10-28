@@ -9,7 +9,7 @@
 
 use crate::ipc::{self, IpcMessage};
 use bincode;
-use serde_core;
+use serde;
 
 use std::{
     cell::RefCell,
@@ -321,10 +321,10 @@ impl OutOfBandMessage {
     }
 }
 
-impl serde_core::Serialize for OutOfBandMessage {
+impl serde::Serialize for OutOfBandMessage {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde_core::Serializer,
+        S: serde::Serializer,
     {
         (
             self.target_process_id,
@@ -336,13 +336,13 @@ impl serde_core::Serialize for OutOfBandMessage {
     }
 }
 
-impl<'de> serde_core::Deserialize<'de> for OutOfBandMessage {
+impl<'de> serde::Deserialize<'de> for OutOfBandMessage {
     fn deserialize<D>(deserializer: D) -> Result<OutOfBandMessage, D::Error>
     where
-        D: serde_core::Deserializer<'de>,
+        D: serde::Deserializer<'de>,
     {
         let (target_process_id, channel_handles, shmem_handles, big_data_receiver_handle) =
-            serde_core::Deserialize::deserialize(deserializer)?;
+            serde::Deserialize::deserialize(deserializer)?;
         Ok(OutOfBandMessage {
             target_process_id,
             channel_handles,
