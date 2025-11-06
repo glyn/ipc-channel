@@ -496,7 +496,7 @@ fn receiver_set_eintr() {
 }
 
 #[test]
-fn receiver_set_empty() {
+fn receiver_set_empty_message() {
     let (tx, rx) = platform::channel().unwrap();
     let mut rx_set = OsIpcReceiverSet::new().unwrap();
     let rx_id = rx_set.add(rx).unwrap();
@@ -511,6 +511,20 @@ fn receiver_set_empty() {
         .unwrap()
         .unwrap();
     assert_eq!(received_id, rx_id);
+    assert!(ipc_message.data.is_empty());
+}
+
+#[test]
+fn receiver_set_empty() {
+    let mut rx_set = OsIpcReceiverSet::new().unwrap();
+
+    let (received_id, ipc_message) = rx_set
+        .select()
+        .unwrap()
+        .into_iter()
+        .next()
+        .unwrap()
+        .unwrap();
     assert!(ipc_message.data.is_empty());
 }
 
