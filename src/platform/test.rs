@@ -518,7 +518,7 @@ fn receiver_set_empty_message() {
 fn receiver_set_empty() {
     let mut rx_set = OsIpcReceiverSet::new().unwrap();
 
-    let (received_id, ipc_message) = rx_set
+    let (_received_id, ipc_message) = rx_set
         .select()
         .unwrap()
         .into_iter()
