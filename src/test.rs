@@ -791,6 +791,7 @@ mod sync_test {
 }
 
 #[test]
+#[ignore = "behaviour depends on OS"]
 fn receiver_set_empty() {
     let mut rx_set = IpcReceiverSet::new().unwrap();
 

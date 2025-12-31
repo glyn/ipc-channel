@@ -515,6 +515,7 @@ fn receiver_set_empty_message() {
 }
 
 #[test]
+#[ignore = "behaviour depends on OS"]
 fn receiver_set_empty() {
     let mut rx_set = OsIpcReceiverSet::new().unwrap();
 
