@@ -42,7 +42,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::ipc::IpcOneShotServer;
 #[cfg(not(any(feature = "force-inprocess", target_os = "android", target_os = "ios")))]
 use crate::ipc::IpcReceiver;
-use crate::ipc::{self, IpcReceiverSet, IpcSender, IpcSharedMemory};
+use crate::ipc::{self, IpcReceiverSet, IpcSelectionResult, IpcSender, IpcSharedMemory};
 use crate::router::{RouterProxy, ROUTER};
 
 #[cfg(not(any(
@@ -788,4 +788,40 @@ mod sync_test {
         // A multi-producer queue must be Sync.
         assert_impl_all!(IpcSender<usize> : Sync);
     }
+}
+
+#[test]
+fn receiver_set_empty() {
+    let mut rx_set = IpcReceiverSet::new().unwrap();
+
+    let (_received_id, ipc_message) = rx_set
+        .select()
+        .unwrap()
+        .into_iter()
+        .next()
+        .unwrap()
+        .unwrap();
+    assert!(ipc_message.data.is_empty());
+}
+
+#[test]
+fn receiver_set_with_disconnected_channel() {
+    let mut rx_set = IpcReceiverSet::new().unwrap();
+
+    let (tx, rx) = ipc::channel::<()>().unwrap();
+    rx_set.add(rx).unwrap();
+    drop(tx);
+
+    let selection_result = rx_set.select().unwrap().into_iter().next().unwrap();
+    if let IpcSelectionResult::ChannelClosed(c) = selection_result {
+        assert_eq!(c, 0);
+    }
+    let (_received_id, ipc_message) = rx_set
+        .select()
+        .unwrap()
+        .into_iter()
+        .next()
+        .unwrap()
+        .unwrap();
+    assert!(ipc_message.data.is_empty());
 }
