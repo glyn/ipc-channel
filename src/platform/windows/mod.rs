@@ -70,6 +70,14 @@ use self::aliased_cell::AliasedCell;
 #[cfg(test)]
 mod tests;
 
+#[derive(Debug, Error)]
+pub enum OsTrySelectError {
+    #[error("Error in IO: {0}.")]
+    IoError(#[from] WinIpcError),
+    #[error("No messages were received and no disconnections occurred.")]
+    Empty,
+}
+
 static CURRENT_PROCESS_ID: LazyLock<u32> = LazyLock::new(std::process::id);
 static CURRENT_PROCESS_HANDLE: LazyLock<WinHandle> =
     LazyLock::new(|| WinHandle::new(unsafe { GetCurrentProcess() }));
@@ -1615,6 +1623,8 @@ impl OsIpcReceiverSet {
             let mut completion_key = 0;
             let mut ov_ptr: *mut OVERLAPPED = ptr::null_mut();
             // XXX use GetQueuedCompletionStatusEx to dequeue multiple CP at once!
+            // Note: GetQueuedCompletionStatus with a non-zero wait time sometimes
+            // returns a timeout error before the wait time has elapsed.
             let result = GetQueuedCompletionStatus(
                 self.iocp.as_raw(),
                 &mut nbytes,
@@ -1768,22 +1778,46 @@ impl OsIpcReceiverSet {
         Ok(selection_results)
     }
 
-    pub fn try_select(&mut self) -> Result<Vec<OsIpcSelectionResult>, WinIpcError> {
+    pub fn try_select(&mut self) -> Result<Vec<OsIpcSelectionResult>, OsTrySelectError> {
         self.try_select_wait(0)
     }
 
     pub fn try_select_timeout(
         &mut self,
         duration: Duration,
-    ) -> Result<Vec<OsIpcSelectionResult>, WinIpcError> {
-        self.try_select_wait(duration.as_millis().try_into().unwrap_or(INFINITE))
+    ) -> Result<Vec<OsIpcSelectionResult>, OsTrySelectError> {
+        // Since try_select_wait sometimes returns prematurely, loop until it returns
+        // an error or the specified duration has elapsed.
+        let mut remaining = duration;
+        loop {
+            let entry = std::time::Instant::now();
+            let v = self.try_select_wait(remaining.as_millis().try_into().unwrap_or(INFINITE));
+            match v {
+                Err(OsTrySelectError::Empty) => {
+                    let rem = remaining.checked_sub(entry.elapsed());
+                    if rem.is_none() {
+                        return v;
+                    }
+                    remaining = rem.unwrap();
+                },
+                _ => return v,
+            }
+        }
     }
 
-    fn try_select_wait(&mut self, wait: u32) -> Result<Vec<OsIpcSelectionResult>, WinIpcError> {
+    // try_select_wait sometimes returns a timeout error before the wait time has expired.
+    fn try_select_wait(
+        &mut self,
+        wait: u32,
+    ) -> Result<Vec<OsIpcSelectionResult>, OsTrySelectError> {
         if self.readers.len() + self.closed_readers.len() == 0 {
             thread::sleep(Duration::from_millis(wait as u64));
             if self.readers.len() + self.closed_readers.len() == 0 {
-                return Ok(vec![]);
+                win32_trace!(
+                    "[# {:?}] try_select_wait with 0 active and 0 closed receivers returning Empty",
+                    self.iocp.as_raw()
+                );
+                return Err(OsTrySelectError::Empty);
             }
         }
         win32_trace!(
@@ -1809,10 +1843,11 @@ impl OsIpcReceiverSet {
             let r = self.fetch_iocp_result(wait);
             let (mut reader, result) = if let Err(winerr) = r {
                 // If operation timed out, return empty vector of results.
-                if winerr.code() == HRESULT::from_win32(WAIT_TIMEOUT) {
-                    return Ok(vec![]);
+                // Note: sometimes fetch_iocp_result returns a timeout error prematurely.
+                if winerr.clone().code() == HRESULT::from_win32(WAIT_TIMEOUT.0) {
+                    return Err(OsTrySelectError::Empty);
                 }
-                return Ok(vec![]); // FIXME: return actual error
+                Err(OsTrySelectError::IoError(winerr.into()))?
             } else {
                 r.unwrap()
             };
@@ -1820,7 +1855,7 @@ impl OsIpcReceiverSet {
             let mut closed = match result {
                 Ok(()) => false,
                 Err(WinIpcError::ChannelClosed) => true,
-                Err(err) => return Err(err),
+                Err(e) => return Err(e.into()),
             };
 
             if !closed {
@@ -1857,7 +1892,7 @@ impl OsIpcReceiverSet {
                         false
                     },
                     Err(WinIpcError::ChannelClosed) => true,
-                    Err(err) => return Err(err),
+                    Err(e) => return Err(e.into()),
                 };
             }
 
@@ -1878,8 +1913,13 @@ impl OsIpcReceiverSet {
             }
         }
 
-        win32_trace!("select() -> {} results", selection_results.len());
-        Ok(selection_results)
+        if selection_results.is_empty() {
+            win32_trace!("try_select_wait() -> Empty");
+            Err(OsTrySelectError::Empty)
+        } else {
+            win32_trace!("try_select_wait() -> {} results", selection_results.len());
+            Ok(selection_results)
+        }
     }
 }
 
