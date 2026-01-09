@@ -29,7 +29,7 @@ use std::{
 };
 use uuid::Uuid;
 use windows::{
-    core::{Error as WinError, PCSTR},
+    core::{Error as WinError, HRESULT, PCSTR},
     Win32::{
         Foundation::{
             CloseHandle, CompareObjectHandles, DuplicateHandle, GetLastError,
@@ -1534,7 +1534,7 @@ impl Drop for OsIpcReceiverSet {
         while !self.readers.is_empty() {
             // We unwrap the outer result (can't deal with the IOCP call failing here),
             // but don't care about the actual results of the completed read operations.
-            let _ = self.fetch_iocp_result().unwrap();
+            let _ = self.fetch_iocp_result(INFINITE).unwrap();
         }
     }
 }
@@ -1606,7 +1606,10 @@ impl OsIpcReceiverSet {
     /// the respective reader remains a member of the set,
     /// and the caller should add it back to the list of active readers
     /// after kicking off a new read operation on it.
-    fn fetch_iocp_result(&mut self) -> Result<(MessageReader, Result<(), WinIpcError>), WinError> {
+    fn fetch_iocp_result(
+        &mut self,
+        wait: u32,
+    ) -> Result<(MessageReader, Result<(), WinIpcError>), WinError> {
         unsafe {
             let mut nbytes: u32 = 0;
             let mut completion_key = 0;
@@ -1617,7 +1620,7 @@ impl OsIpcReceiverSet {
                 &mut nbytes,
                 &mut completion_key,
                 &mut ov_ptr,
-                INFINITE,
+                wait,
             );
             win32_trace!(
                 "[# {:?}] GetQueuedCS -> ok:{} nbytes:{} key:{:?}",
@@ -1698,7 +1701,137 @@ impl OsIpcReceiverSet {
         // Do this in a loop, because we may need to dequeue multiple packets to
         // read a complete message.
         while selection_results.is_empty() {
-            let (mut reader, result) = self.fetch_iocp_result()?;
+            let (mut reader, result) = self.fetch_iocp_result(INFINITE)?;
+
+            let mut closed = match result {
+                Ok(()) => false,
+                Err(WinIpcError::ChannelClosed) => true,
+                Err(err) => return Err(err),
+            };
+
+            if !closed {
+                // Drain as many messages as we can.
+                while let Some(ipc_message) = reader.get_message()? {
+                    win32_trace!(
+                        "[# {:?}] receiver {:?} ({}) got a message",
+                        self.iocp.as_raw(),
+                        reader.get_raw_handle(),
+                        reader.entry_id.unwrap()
+                    );
+                    selection_results.push(OsIpcSelectionResult::DataReceived(
+                        reader.entry_id.unwrap(),
+                        ipc_message,
+                    ));
+                }
+                win32_trace!(
+                    "[# {:?}] receiver {:?} ({}) -- no message",
+                    self.iocp.as_raw(),
+                    reader.get_raw_handle(),
+                    reader.entry_id.unwrap()
+                );
+
+                // Now that we are done frobbing the buffer,
+                // we can safely initiate the next async read operation.
+                closed = match reader.start_read() {
+                    Ok(()) => {
+                        // We just successfully reinstated it as an active reader --
+                        // so add it back to the list.
+                        //
+                        // Note: `take()` is a workaround for the compiler not seeing
+                        // that we won't actually be using it anymore after this...
+                        self.readers.push(reader.take());
+                        false
+                    },
+                    Err(WinIpcError::ChannelClosed) => true,
+                    Err(err) => return Err(err),
+                };
+            }
+
+            // If we got a "sender closed" notification --
+            // either instead of new data,
+            // or while trying to re-initiate an async read after receiving data --
+            // add an event to this effect to the result list.
+            if closed {
+                win32_trace!(
+                    "[# {:?}] receiver {:?} ({}) -- now closed!",
+                    self.iocp.as_raw(),
+                    reader.get_raw_handle(),
+                    reader.entry_id.unwrap()
+                );
+                selection_results.push(OsIpcSelectionResult::ChannelClosed(
+                    reader.entry_id.unwrap(),
+                ));
+            }
+        }
+
+        win32_trace!("select() -> {} results", selection_results.len());
+        Ok(selection_results)
+    }
+
+    pub fn try_select(&mut self) -> Result<Vec<OsIpcSelectionResult>, WinIpcError> {
+        self.try_select_wait(0)
+    }
+
+    pub fn try_select_timeout(
+        &mut self,
+        duration: Duration,
+    ) -> Result<Vec<OsIpcSelectionResult>, WinIpcError> {
+        // Since try_select_wait sometimes returns prematurely, loop until it returns
+        // an error or the specified duration has elapsed.
+        let mut remaining = duration;
+        loop {
+            let entry = std::time::Instant::now();
+            let v = self.try_select_wait(remaining.as_millis().try_into().unwrap_or(INFINITE));
+            let rem = remaining.checked_sub(entry.elapsed());
+            if v.is_err() || rem.is_none() {
+                return v;
+            }
+            remaining = rem.unwrap();
+        }
+    }
+
+    fn try_select_wait(&mut self, wait: u32) -> Result<Vec<OsIpcSelectionResult>, WinIpcError> {
+        if self.readers.len() + self.closed_readers.len() == 0 {
+            thread::sleep(Duration::from_millis(wait as u64));
+            if self.readers.len() + self.closed_readers.len() == 0 {
+                win32_trace!(
+                    "[# {:?}] try_select_wait with 0 active and 0 closed receivers returning empty vector",
+                    self.iocp.as_raw()
+                );
+                return Ok(vec![]);
+            }
+        }
+        win32_trace!(
+            "[# {:?}] try_select_wait() with {} active and {} closed receivers",
+            self.iocp.as_raw(),
+            self.readers.len(),
+            self.closed_readers.len()
+        );
+
+        // the ultimate results
+        let mut selection_results = vec![];
+
+        // Process any pending "closed" events
+        // from channels that got closed before being added to the set,
+        // and thus received "closed" notifications while being added.
+        self.closed_readers.drain(..).for_each(|entry_id| {
+            selection_results.push(OsIpcSelectionResult::ChannelClosed(entry_id))
+        });
+
+        // Do this in a loop, because we may need to dequeue multiple packets to
+        // read a complete message.
+        while selection_results.is_empty() {
+            let r = self.fetch_iocp_result(wait);
+            let (mut reader, result) = if let Err(winerr) = r {
+                // If operation timed out, return empty vector of results.
+                // Note: sometimes fetch_iocp_result returns a timeout error prematurely.
+                if winerr.clone().code() == HRESULT::from_win32(WAIT_TIMEOUT.0) {
+                    return Ok(vec![]);
+                }
+                Err(winerr)?
+            } else {
+                r.unwrap()
+            };
 
             let mut closed = match result {
                 Ok(()) => false,
