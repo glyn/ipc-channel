@@ -525,6 +525,32 @@ impl OsIpcReceiverSet {
             }
         }
 
+        self.selection_results()
+    }
+
+    pub fn try_select(&mut self) -> Result<Vec<OsIpcSelectionResult>, UnixError> {
+        // Non-blocking poll to receive zero or more events.
+        self.try_select_timeout(Duration::ZERO)
+    }
+
+    pub fn try_select_timeout(
+        &mut self,
+        duration: Duration,
+    ) -> Result<Vec<OsIpcSelectionResult>, UnixError> {
+        // Poll for the specified duration until we receive zero or more events.
+        match self.poll.poll(&mut self.events, Some(duration)) {
+            Ok(()) => (),
+            Err(ref error) => {
+                if error.kind() != io::ErrorKind::Interrupted {
+                    return Err(UnixError::last());
+                }
+            },
+        }
+
+        self.selection_results()
+    }
+
+    fn selection_results(&mut self) -> Result<Vec<OsIpcSelectionResult>, UnixError> {
         let mut selection_results = Vec::new();
         for event in self.events.iter() {
             // We only register this `Poll` for readable events.
