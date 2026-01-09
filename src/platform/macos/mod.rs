@@ -626,7 +626,24 @@ impl OsIpcReceiverSet {
     }
 
     pub fn select(&mut self) -> Result<Vec<OsIpcSelectionResult>, MachError> {
-        let result = select(self.port, BlockingMode::Blocking);
+        self.selection_results(select(self.port, BlockingMode::Blocking))
+    }
+
+    pub fn try_select(&mut self) -> Result<Vec<OsIpcSelectionResult>, MachError> {
+        self.selection_results(select(self.port, BlockingMode::Nonblocking))
+    }
+
+    pub fn try_select_timeout(
+        &mut self,
+        duration: Duration,
+    ) -> Result<Vec<OsIpcSelectionResult>, MachError> {
+        self.selection_results(select(self.port, BlockingMode::Timeout(duration)))
+    }
+
+    fn selection_results(
+        &mut self,
+        result: Result<OsIpcSelectionResult, MachError>,
+    ) -> Result<Vec<OsIpcSelectionResult>, MachError> {
         if let Ok(OsIpcSelectionResult::ChannelClosed(mach_port)) = result {
             let index = self
                 .ports
@@ -634,6 +651,8 @@ impl OsIpcReceiverSet {
                 .position(|port| port.extract_port() as u64 == mach_port)
                 .expect("Port must be present for error to occur");
             let _ = self.ports.swap_remove(index);
+        } else if let Err(MachError::RcvTimedOut) = result {
+            return Ok(vec![]);
         }
         result.map(|result| vec![result])
     }
