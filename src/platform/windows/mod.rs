@@ -1798,7 +1798,7 @@ impl OsIpcReceiverSet {
             let r = self.fetch_iocp_result(wait);
             let (mut reader, result) = if let Err(winerr) = r {
                 // If operation timed out, return empty vector of results.
-                if winerr.code() == HRESULT(0x80070102u32 as i32) {
+                if winerr.code() == HRESULT::from_win32(WAIT_TIMEOUT) {
                     return Ok(vec![]);
                 }
                 return Ok(vec![]); // FIXME: return actual error
