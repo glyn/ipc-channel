@@ -29,27 +29,38 @@ use std::{
 };
 use uuid::Uuid;
 use windows::{
+    core::{Error as WinError, HRESULT, PCSTR},
     Win32::{
         Foundation::{
-            CloseHandle, CompareObjectHandles, DUPLICATE_CLOSE_SOURCE, DUPLICATE_HANDLE_OPTIONS, DUPLICATE_SAME_ACCESS, DuplicateHandle, ERROR_BROKEN_PIPE, ERROR_IO_INCOMPLETE, ERROR_IO_PENDING, ERROR_NO_DATA, ERROR_NOT_FOUND, ERROR_PIPE_CONNECTED, GetLastError, HANDLE, INVALID_HANDLE_VALUE, WAIT_TIMEOUT
+            CloseHandle, CompareObjectHandles, DuplicateHandle, GetLastError,
+            DUPLICATE_CLOSE_SOURCE, DUPLICATE_HANDLE_OPTIONS, DUPLICATE_SAME_ACCESS,
+            ERROR_BROKEN_PIPE, ERROR_IO_INCOMPLETE, ERROR_IO_PENDING, ERROR_NOT_FOUND,
+            ERROR_NO_DATA, ERROR_PIPE_CONNECTED, HANDLE, INVALID_HANDLE_VALUE, WAIT_TIMEOUT,
         },
         Storage::FileSystem::{
-            CreateFileA, FILE_ATTRIBUTE_NORMAL, FILE_FLAG_OVERLAPPED, FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_SHARE_MODE, OPEN_EXISTING, PIPE_ACCESS_DUPLEX, ReadFile, WriteFile
+            CreateFileA, ReadFile, WriteFile, FILE_ATTRIBUTE_NORMAL, FILE_FLAG_OVERLAPPED,
+            FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_SHARE_MODE, OPEN_EXISTING,
+            PIPE_ACCESS_DUPLEX,
         },
         System::{
+            Memory::{
+                CreateFileMappingA, MapViewOfFile, UnmapViewOfFile, FILE_MAP_ALL_ACCESS,
+                MEMORY_MAPPED_VIEW_ADDRESS, PAGE_READWRITE, SEC_COMMIT,
+            },
+            Pipes::{
+                ConnectNamedPipe, CreateNamedPipeA, GetNamedPipeServerProcessId,
+                PIPE_READMODE_BYTE, PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE,
+            },
+            Threading::{
+                CreateEventA, GetCurrentProcess, OpenProcess, ResetEvent, INFINITE,
+                PROCESS_DUP_HANDLE,
+            },
             IO::{
                 CancelIoEx, CreateIoCompletionPort, GetOverlappedResult, GetOverlappedResultEx,
                 GetQueuedCompletionStatus, OVERLAPPED,
-            }, Memory::{
-                CreateFileMappingA, FILE_MAP_ALL_ACCESS, MEMORY_MAPPED_VIEW_ADDRESS, MapViewOfFile, PAGE_READWRITE, SEC_COMMIT, UnmapViewOfFile
-            }, Pipes::{
-                ConnectNamedPipe, CreateNamedPipeA, GetNamedPipeServerProcessId,
-                PIPE_READMODE_BYTE, PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE,
-            }, Threading::{
-                CreateEventA, GetCurrentProcess, INFINITE, OpenProcess, PROCESS_DUP_HANDLE, ResetEvent
-            }
+            },
         },
-    }, core::{Error as WinError, HRESULT, PCSTR}
+    },
 };
 
 mod aliased_cell;
