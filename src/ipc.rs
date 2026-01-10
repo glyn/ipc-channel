@@ -506,6 +506,7 @@ impl IpcReceiverSet {
             .os_receiver_set
             .try_select_timeout(duration)
             .map_err(|e| TrySelectError::IoError(e.into()))?;
+
         let results = results
             .into_iter()
             .map(|result| match result {

@@ -203,6 +203,92 @@ impl OsIpcReceiverSet {
         self.receiver_ids.remove(r_index);
         Ok(vec![OsIpcSelectionResult::ChannelClosed(r_id)])
     }
+
+    pub fn try_select(&mut self) -> Result<Vec<OsIpcSelectionResult>, ChannelError> {
+        if self.receivers.is_empty() {
+            return Ok(vec![]);
+        }
+
+        struct Remove(usize, u64);
+
+        // FIXME: Remove early returns and explicitly drop `borrows` when lifetimes are non-lexical
+        let Remove(r_index, r_id) = {
+            let borrows: Vec<_> = self
+                .receivers
+                .iter()
+                .map(|r| Ref::map(r.receiver.borrow(), |o| o.as_ref().unwrap()))
+                .collect();
+
+            let mut select = Select::new();
+            for r in &borrows {
+                select.recv(r);
+            }
+            let res = select.try_select();
+            if res.is_err() {
+                return Ok(vec![]);
+            }
+            let res = res.unwrap();
+            let receiver_index = res.index();
+            let receiver_id = self.receiver_ids[receiver_index];
+            if let Ok(ChannelMessage(ipc_message)) = res.recv(&borrows[receiver_index]) {
+                return Ok(vec![OsIpcSelectionResult::DataReceived(
+                    receiver_id,
+                    ipc_message,
+                )]);
+            } else {
+                Remove(receiver_index, receiver_id)
+            }
+        };
+        self.receivers.remove(r_index);
+        self.receiver_ids.remove(r_index);
+        Ok(vec![OsIpcSelectionResult::ChannelClosed(r_id)])
+    }
+
+    pub fn try_select_timeout(
+        &mut self,
+        duration: Duration,
+    ) -> Result<Vec<OsIpcSelectionResult>, ChannelError> {
+        if self.receivers.is_empty() {
+            std::thread::sleep(duration);
+            if self.receivers.is_empty() {
+                return Ok(vec![]);
+            }
+        }
+
+        struct Remove(usize, u64);
+
+        // FIXME: Remove early returns and explicitly drop `borrows` when lifetimes are non-lexical
+        let Remove(r_index, r_id) = {
+            let borrows: Vec<_> = self
+                .receivers
+                .iter()
+                .map(|r| Ref::map(r.receiver.borrow(), |o| o.as_ref().unwrap()))
+                .collect();
+
+            let mut select = Select::new();
+            for r in &borrows {
+                select.recv(r);
+            }
+            let res = select.select_timeout(duration);
+            if res.is_err() {
+                return Ok(vec![]);
+            }
+            let res = res.unwrap();
+            let receiver_index = res.index();
+            let receiver_id = self.receiver_ids[receiver_index];
+            if let Ok(ChannelMessage(ipc_message)) = res.recv(&borrows[receiver_index]) {
+                return Ok(vec![OsIpcSelectionResult::DataReceived(
+                    receiver_id,
+                    ipc_message,
+                )]);
+            } else {
+                Remove(receiver_index, receiver_id)
+            }
+        };
+        self.receivers.remove(r_index);
+        self.receiver_ids.remove(r_index);
+        Ok(vec![OsIpcSelectionResult::ChannelClosed(r_id)])
+    }
 }
 
 pub enum OsIpcSelectionResult {
