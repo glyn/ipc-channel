@@ -21,6 +21,14 @@ use std::time::Duration;
 use thiserror::Error;
 use uuid::Uuid;
 
+#[derive(Debug, Error)]
+pub enum OsTrySelectError {
+    #[error("Error in IO: {0}.")]
+    IoError(#[from] ChannelError),
+    #[error("No messages were received and no disconnections occurred.")]
+    Empty,
+}
+
 #[derive(Clone)]
 struct ServerRecord {
     sender: OsIpcSender,
@@ -204,9 +212,9 @@ impl OsIpcReceiverSet {
         Ok(vec![OsIpcSelectionResult::ChannelClosed(r_id)])
     }
 
-    pub fn try_select(&mut self) -> Result<Vec<OsIpcSelectionResult>, ChannelError> {
+    pub fn try_select(&mut self) -> Result<Vec<OsIpcSelectionResult>, OsTrySelectError> {
         if self.receivers.is_empty() {
-            return Ok(vec![]);
+            return Err(OsTrySelectError::Empty);
         }
 
         struct Remove(usize, u64);
@@ -225,7 +233,7 @@ impl OsIpcReceiverSet {
             }
             let res = select.try_select();
             if res.is_err() {
-                return Ok(vec![]);
+                return Err(OsTrySelectError::Empty);
             }
             let res = res.unwrap();
             let receiver_index = res.index();
@@ -247,11 +255,11 @@ impl OsIpcReceiverSet {
     pub fn try_select_timeout(
         &mut self,
         duration: Duration,
-    ) -> Result<Vec<OsIpcSelectionResult>, ChannelError> {
+    ) -> Result<Vec<OsIpcSelectionResult>, OsTrySelectError> {
         if self.receivers.is_empty() {
             std::thread::sleep(duration);
             if self.receivers.is_empty() {
-                return Ok(vec![]);
+                return Err(OsTrySelectError::Empty);
             }
         }
 
@@ -271,7 +279,7 @@ impl OsIpcReceiverSet {
             }
             let res = select.select_timeout(duration);
             if res.is_err() {
-                return Ok(vec![]);
+                return Err(OsTrySelectError::Empty);
             }
             let res = res.unwrap();
             let receiver_index = res.index();
