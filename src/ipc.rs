@@ -11,6 +11,7 @@ use crate::error::SerializationError;
 use crate::platform::{self, OsIpcChannel, OsIpcReceiver, OsIpcReceiverSet, OsIpcSender};
 use crate::platform::{
     OsIpcOneShotServer, OsIpcSelectionResult, OsIpcSharedMemory, OsOpaqueIpcChannel,
+    OsTrySelectError,
 };
 use crate::{IpcError, TryRecvError, TrySelectError};
 
@@ -460,10 +461,11 @@ impl IpcReceiverSet {
     /// If no messages are received and no disconnection of a receiver in the set occurs,
     /// TrySelectError::Empty is returned.
     pub fn try_select(&mut self) -> Result<Vec<IpcSelectionResult>, TrySelectError> {
-        let results = self
-            .os_receiver_set
-            .try_select()
-            .map_err(|e| TrySelectError::IoError(e.into()))?;
+        let results: Vec<OsIpcSelectionResult> =
+            self.os_receiver_set.try_select().map_err(|e| match e {
+                OsTrySelectError::IoError(e) => TrySelectError::IoError(e.into()),
+                OsTrySelectError::Empty => TrySelectError::Empty,
+            })?;
         let results = results
             .into_iter()
             .map(|result| match result {
@@ -475,11 +477,7 @@ impl IpcReceiverSet {
                 },
             })
             .collect::<Vec<IpcSelectionResult>>();
-        if results.is_empty() {
-            Err(TrySelectError::Empty)
-        } else {
-            Ok(results)
-        }
+        Ok(results)
     }
 
     /// Blocks for up to the specified duration attempting to receive IPC messages on any
@@ -505,7 +503,10 @@ impl IpcReceiverSet {
         let results = self
             .os_receiver_set
             .try_select_timeout(duration)
-            .map_err(|e| TrySelectError::IoError(e.into()))?;
+            .map_err(|e| match e {
+                OsTrySelectError::IoError(e) => TrySelectError::IoError(e.into()),
+                OsTrySelectError::Empty => TrySelectError::Empty,
+            })?;
 
         let results = results
             .into_iter()
