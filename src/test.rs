@@ -922,3 +922,40 @@ mod sync_test {
         assert_impl_all!(IpcSender<usize> : Sync);
     }
 }
+
+#[test]
+#[ignore = "behaviour depends on OS"]
+fn receiver_set_empty() {
+    let mut rx_set = IpcReceiverSet::new().unwrap();
+
+    let (_received_id, ipc_message) = rx_set
+        .select()
+        .unwrap()
+        .into_iter()
+        .next()
+        .unwrap()
+        .unwrap();
+    assert!(ipc_message.data.is_empty());
+}
+
+#[test]
+fn receiver_set_with_disconnected_channel() {
+    let mut rx_set = IpcReceiverSet::new().unwrap();
+
+    let (tx, rx) = ipc::channel::<()>().unwrap();
+    rx_set.add(rx).unwrap();
+    drop(tx);
+
+    let selection_result = rx_set.select().unwrap().into_iter().next().unwrap();
+    if let IpcSelectionResult::ChannelClosed(c) = selection_result {
+        assert_eq!(c, 0);
+    }
+    let (_received_id, ipc_message) = rx_set
+        .select()
+        .unwrap()
+        .into_iter()
+        .next()
+        .unwrap()
+        .unwrap();
+    assert!(ipc_message.data.is_empty());
+}
